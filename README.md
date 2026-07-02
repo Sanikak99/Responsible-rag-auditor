@@ -147,13 +147,6 @@ cd responsible-rag-auditor
 pip install -r backend/requirements.txt
 ```
 
-### Step 3 — Start the server
-````bash
-bash run.sh
-````
-
-**Replace with:**
-````markdown
 ### Step 3 — Activate virtual environment
 ```powershell
 # Windows
@@ -177,7 +170,7 @@ uvicorn main:app --reload
 ### Step 5 — Open the dashboard
 ````
 http://localhost:8000
-
+```
 ---
 
 ## API Usage (Pipeline Integration)

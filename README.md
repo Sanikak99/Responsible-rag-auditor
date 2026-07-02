@@ -65,6 +65,75 @@ responsible-rag-auditor/
 
 ---
 
+## Sample Input / Output
+
+### Input — paste these 3 things into the dashboard
+
+**Query:**
+```
+What is Newton's second law of motion?
+```
+
+**Retrieved Chunk:**
+```
+Newton's second law of motion states that the force acting on an object
+is equal to the mass of the object multiplied by its acceleration.
+Mathematically expressed as F = ma, where F is force in Newtons,
+m is mass in kilograms, and a is acceleration in metres per second squared.
+```
+
+**Generated Answer (deliberately bad — hallucination + PII):**
+```
+Newton's second law states F=ma. This law was discovered by Einstein in 1905
+and is used by NASA for rocket propulsion. Contact us at test@example.com
+or call 9876543210 for more information.
+```
+
+---
+
+### Output — what the auditor returns
+
+```json
+{
+  "overall_status": "FAIL",
+  "overall_risk_score": 52,
+  "modules": {
+    "prompt_injection": { "status": "PASS" },
+    "pii": {
+      "status": "FAIL",
+      "risk_level": "HIGH",
+      "summary": "Generated answer exposes Email Address, Indian Mobile Number — HIGHEST RISK"
+    },
+    "groundedness": {
+      "status": "FAIL",
+      "score_percent": "25%",
+      "summary": "3/4 sentences not supported by retrieved context — possible hallucination",
+      "sentence_results": [
+        { "sentence": "Newton's second law states F=ma.", "verdict": "GROUNDED", "score": 0.82 },
+        { "sentence": "This law was discovered by Einstein in 1905.", "verdict": "HALLUCINATED", "score": 0.04 },
+        { "sentence": "It is used by NASA for rocket propulsion.", "verdict": "HALLUCINATED", "score": 0.02 },
+        { "sentence": "Contact us at test@example.com", "verdict": "HALLUCINATED", "score": 0.00 }
+      ]
+    },
+    "bias": { "status": "PASS" },
+    "audit_trail": {
+      "audit_id": "55293b1a-ff16-44c3-b4e7-270d18795ab8",
+      "content_hash": "b4e7270d18795ab8c3f...",
+      "timestamp_utc": "2025-07-03T10:42:31.004Z"
+    }
+  }
+}
+```
+
+**What the dashboard flags:**
+- 🔴 PII FAIL — email + phone detected in generated answer
+- 🔴 Groundedness FAIL — 3/4 sentences hallucinated (Einstein 1905, NASA, contact info)
+- ✅ Prompt Injection PASS — no malicious patterns in query
+- ✅ Bias PASS — no demographic bias indicators
+- 📋 Audit Trail — record saved with SHA-256 hash for tamper detection
+
+---
+
 ## How to Run Locally
 
 ### Step 1 — Clone the repo
@@ -79,19 +148,35 @@ pip install -r backend/requirements.txt
 ```
 
 ### Step 3 — Start the server
-```bash
+````bash
 bash run.sh
+````
+
+**Replace with:**
+````markdown
+### Step 3 — Activate virtual environment
+```powershell
+# Windows
+venv\Scripts\activate
+
+# Mac/Linux
+source venv/bin/activate
 ```
 
-### Step 4 — Open the dashboard
+### Step 4 — Start the server
+```powershell
+# Windows
+cd backend
+python -m uvicorn main:app --reload
+
+# Mac/Linux
+cd backend
+uvicorn main:app --reload
 ```
+
+### Step 5 — Open the dashboard
+````
 http://localhost:8000
-```
-
-API documentation (Swagger UI):
-```
-http://localhost:8000/docs
-```
 
 ---
 

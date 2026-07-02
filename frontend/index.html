@@ -1,0 +1,1040 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Responsible RAG Auditor</title>
+  <style>
+    /* ── Design System ── */
+    :root {
+      --bg:         #0d1117;
+      --surface:    #161b22;
+      --surface2:   #1c2230;
+      --border:     #30363d;
+      --accent:     #3b82f6;
+      --accent2:    #6366f1;
+      --text:       #e6edf3;
+      --muted:      #8b949e;
+      --pass:       #22c55e;
+      --warn:       #f59e0b;
+      --fail:       #ef4444;
+      --critical:   #dc2626;
+      --high:       #ef4444;
+      --medium:     #f59e0b;
+      --low:        #3b82f6;
+      --none:       #22c55e;
+      --radius:     10px;
+      --shadow:     0 4px 24px rgba(0,0,0,0.4);
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      min-height: 100vh;
+    }
+
+    /* ── Top Nav ── */
+    nav {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 32px;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky; top: 0; z-index: 100;
+    }
+    .nav-brand {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 17px; font-weight: 700; color: var(--text);
+    }
+    .nav-brand .dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: var(--accent); box-shadow: 0 0 8px var(--accent);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+    .nav-links { display: flex; gap: 8px; }
+    .nav-link {
+      padding: 6px 14px; border-radius: 6px; font-size: 13px;
+      color: var(--muted); cursor: pointer; border: none;
+      background: transparent; transition: all .2s;
+    }
+    .nav-link:hover, .nav-link.active {
+      color: var(--text); background: var(--surface2);
+    }
+
+    /* ── Main Layout ── */
+    main { max-width: 1200px; margin: 0 auto; padding: 32px 24px; }
+    .page { display: none; }
+    .page.active { display: block; }
+
+    /* ── Hero ── */
+    .hero {
+      text-align: center; padding: 40px 0 32px;
+    }
+    .hero h1 { font-size: 32px; font-weight: 800; margin-bottom: 10px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .hero p { color: var(--muted); font-size: 15px; max-width: 560px; margin: 0 auto; }
+    .framework-tags { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 16px; }
+    .tag {
+      font-size: 11px; padding: 3px 10px; border-radius: 99px;
+      border: 1px solid var(--border); color: var(--muted);
+    }
+
+    /* ── Audit Form Card ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+    .card-title {
+      font-size: 13px; font-weight: 600; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .08em;
+      margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
+    }
+    label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 6px; }
+    textarea, input, select {
+      width: 100%; padding: 10px 14px;
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); font-size: 14px;
+      font-family: inherit; transition: border .2s; resize: vertical;
+    }
+    textarea:focus, input:focus, select:focus {
+      outline: none; border-color: var(--accent);
+    }
+    .form-row { margin-bottom: 16px; }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+    /* Chunk inputs */
+    .chunks-container { display: flex; flex-direction: column; gap: 10px; }
+    .chunk-item { position: relative; }
+    .chunk-label {
+      position: absolute; top: 10px; left: 12px;
+      font-size: 10px; color: var(--muted); font-weight: 600;
+      text-transform: uppercase; letter-spacing: .06em;
+      pointer-events: none;
+    }
+    .chunk-item textarea { padding-top: 28px; min-height: 80px; }
+    .add-chunk-btn {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 16px; background: transparent;
+      border: 1px dashed var(--border); border-radius: 8px;
+      color: var(--muted); font-size: 13px; cursor: pointer;
+      transition: all .2s; width: 100%;
+    }
+    .add-chunk-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* Audit Button */
+    .audit-btn {
+      width: 100%; padding: 14px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border: none; border-radius: 8px; color: #fff;
+      font-size: 16px; font-weight: 700; cursor: pointer;
+      transition: opacity .2s, transform .15s;
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+    }
+    .audit-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+    .audit-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+    /* ── Loader ── */
+    .loader {
+      display: none; text-align: center; padding: 40px;
+    }
+    .loader.active { display: block; }
+    .spinner {
+      width: 48px; height: 48px; border: 3px solid var(--border);
+      border-top-color: var(--accent); border-radius: 50%;
+      animation: spin 1s linear infinite; margin: 0 auto 16px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loader-steps { display: flex; flex-direction: column; gap: 6px; margin-top: 16px; }
+    .loader-step {
+      font-size: 13px; color: var(--muted);
+      animation: fadeIn .5s ease forwards; opacity: 0;
+    }
+    .loader-step.done { color: var(--pass); }
+    @keyframes fadeIn { to { opacity: 1; } }
+
+    /* ── Results ── */
+    .results { display: none; }
+    .results.active { display: block; }
+
+    /* Overall score banner */
+    .score-banner {
+      border-radius: var(--radius); padding: 28px 32px;
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 20px; flex-wrap: wrap; gap: 20px;
+    }
+    .score-banner.PASS  { background: linear-gradient(135deg,#052e16,#14532d); border: 1px solid var(--pass); }
+    .score-banner.WARN  { background: linear-gradient(135deg,#2d1a00,#451a03); border: 1px solid var(--warn); }
+    .score-banner.FAIL  { background: linear-gradient(135deg,#2d0a0a,#450a0a); border: 1px solid var(--fail); }
+
+    .score-left h2 { font-size: 26px; font-weight: 800; }
+    .score-left h2.PASS { color: var(--pass); }
+    .score-left h2.WARN { color: var(--warn); }
+    .score-left h2.FAIL { color: var(--fail); }
+    .score-left p { color: var(--muted); font-size: 13px; margin-top: 4px; }
+
+    .score-circle {
+      width: 90px; height: 90px; border-radius: 50%;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      border: 3px solid;
+    }
+    .score-circle .num { font-size: 28px; font-weight: 800; }
+    .score-circle .lbl { font-size: 10px; color: var(--muted); }
+    .score-circle.PASS { border-color: var(--pass); color: var(--pass); }
+    .score-circle.WARN { border-color: var(--warn); color: var(--warn); }
+    .score-circle.FAIL { border-color: var(--fail); color: var(--fail); }
+
+    .score-meta { font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 4px; }
+    .score-meta span { display: flex; align-items: center; gap: 6px; }
+
+    /* Module grid */
+    .modules-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px; margin-bottom: 20px;
+    }
+    .module-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 20px; cursor: pointer;
+      transition: border-color .2s, transform .15s;
+    }
+    .module-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+    .module-card.PASS  { border-left: 3px solid var(--pass); }
+    .module-card.WARN  { border-left: 3px solid var(--warn); }
+    .module-card.FAIL  { border-left: 3px solid var(--fail); }
+    .module-card.PARTIAL { border-left: 3px solid var(--warn); }
+
+    .module-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+    .module-name { font-size: 13px; font-weight: 700; }
+    .badge {
+      font-size: 10px; font-weight: 700; padding: 3px 10px;
+      border-radius: 99px; text-transform: uppercase; letter-spacing: .06em;
+    }
+    .badge.PASS    { background: rgba(34,197,94,.15);  color: var(--pass); }
+    .badge.WARN    { background: rgba(245,158,11,.15); color: var(--warn); }
+    .badge.FAIL    { background: rgba(239,68,68,.15);  color: var(--fail); }
+    .badge.PARTIAL { background: rgba(245,158,11,.15); color: var(--warn); }
+    .badge.ERROR   { background: rgba(139,92,246,.15); color: #a78bfa; }
+    .badge.CRITICAL{ background: rgba(220,38,38,.2);   color: #fca5a5; }
+    .badge.HIGH    { background: rgba(239,68,68,.15);  color: var(--fail); }
+    .badge.MEDIUM  { background: rgba(245,158,11,.15); color: var(--warn); }
+    .badge.LOW     { background: rgba(59,130,246,.15); color: var(--low); }
+    .badge.NONE    { background: rgba(34,197,94,.15);  color: var(--pass); }
+
+    .module-summary { font-size: 12px; color: var(--muted); line-height: 1.6; }
+    .module-expand { font-size: 11px; color: var(--accent); margin-top: 10px; }
+
+    /* Detail panel */
+    .detail-panel {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 24px; margin-bottom: 20px;
+      display: none;
+    }
+    .detail-panel.active { display: block; }
+    .detail-title { font-size: 16px; font-weight: 700; margin-bottom: 16px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .close-btn {
+      margin-left: auto; background: transparent; border: none;
+      color: var(--muted); cursor: pointer; font-size: 18px;
+      transition: color .2s;
+    }
+    .close-btn:hover { color: var(--text); }
+
+    /* Sentence groundedness rows */
+    .sentence-row {
+      padding: 12px 14px; border-radius: 8px; margin-bottom: 8px;
+      border: 1px solid var(--border);
+    }
+    .sentence-row.grounded   { border-left: 3px solid var(--pass); }
+    .sentence-row.hallucinated { border-left: 3px solid var(--fail); }
+    .sentence-text { font-size: 13px; margin-bottom: 6px; }
+    .sentence-meta { display: flex; align-items: center; gap: 12px; }
+    .score-bar-wrap { flex: 1; background: var(--border); border-radius: 99px; height: 6px; }
+    .score-bar { height: 6px; border-radius: 99px; transition: width .6s ease; }
+    .score-bar.grounded   { background: var(--pass); }
+    .score-bar.hallucinated { background: var(--fail); }
+    .score-val { font-size: 11px; color: var(--muted); min-width: 36px; text-align: right; }
+
+    /* PII findings */
+    .finding-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 14px; background: var(--surface2); border-radius: 8px;
+      margin-bottom: 8px; font-size: 13px;
+    }
+    .finding-left { display: flex; flex-direction: column; gap: 3px; }
+    .finding-name { font-weight: 600; }
+    .finding-desc { font-size: 11px; color: var(--muted); }
+
+    /* Framework mappings */
+    .frameworks { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+    .fw-tag {
+      font-size: 10px; padding: 3px 9px; border-radius: 99px;
+      background: var(--surface2); border: 1px solid var(--border); color: var(--muted);
+    }
+
+    /* ── History Table ── */
+    .history-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 20px;
+    }
+    .history-header h2 { font-size: 18px; font-weight: 700; }
+    .refresh-btn {
+      padding: 8px 16px; background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); font-size: 13px; cursor: pointer;
+      transition: border-color .2s;
+    }
+    .refresh-btn:hover { border-color: var(--accent); }
+
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th {
+      text-align: left; padding: 10px 14px; color: var(--muted);
+      font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
+      border-bottom: 1px solid var(--border);
+    }
+    td { padding: 12px 14px; border-bottom: 1px solid var(--border); color: var(--text); }
+    tr:hover td { background: var(--surface2); }
+    .td-query { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* Risk score pill */
+    .risk-pill {
+      display: inline-block; padding: 3px 10px; border-radius: 99px;
+      font-size: 11px; font-weight: 700;
+    }
+    .risk-pill.low  { background: rgba(34,197,94,.1);  color: var(--pass); }
+    .risk-pill.med  { background: rgba(245,158,11,.1); color: var(--warn); }
+    .risk-pill.high { background: rgba(239,68,68,.1);  color: var(--fail); }
+
+    /* Empty state */
+    .empty-state {
+      text-align: center; padding: 60px 20px; color: var(--muted);
+    }
+    .empty-state .icon { font-size: 40px; margin-bottom: 12px; }
+
+    /* Toast */
+    .toast {
+      position: fixed; bottom: 24px; right: 24px;
+      background: var(--surface); border: 1px solid var(--border);
+      padding: 12px 20px; border-radius: 8px; font-size: 13px;
+      box-shadow: var(--shadow); transform: translateY(100px);
+      transition: transform .3s; z-index: 999;
+    }
+    .toast.show { transform: translateY(0); }
+
+    /* ── Responsive ── */
+    @media(max-width:640px) {
+      .form-grid { grid-template-columns: 1fr; }
+      .score-banner { flex-direction: column; }
+      main { padding: 16px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-brand">
+    <div class="dot"></div>
+    Responsible RAG Auditor
+  </div>
+  <div class="nav-links">
+    <button class="nav-link active" onclick="showPage('audit')">Audit</button>
+    <button class="nav-link" onclick="showPage('history'); loadHistory()">History</button>
+  </div>
+</nav>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<!-- ══════════════ AUDIT PAGE ══════════════ -->
+<main>
+<div class="page active" id="page-audit">
+
+  <!-- Hero -->
+  <div class="hero">
+    <h1>RAG Pipeline Governance Auditor</h1>
+    <p>Paste your pipeline's query, retrieved chunks, and generated answer. Get an instant governance report across 5 dimensions.</p>
+    <div class="framework-tags">
+      <span class="tag">NIST AI RMF</span>
+      <span class="tag">RBI FREE-AI</span>
+      <span class="tag">EU AI Act</span>
+      <span class="tag">DPDP Act 2023</span>
+      <span class="tag">OWASP LLM Top 10</span>
+    </div>
+  </div>
+
+  <!-- Input Form -->
+  <div class="card">
+    <div class="card-title">📥 Pipeline Input</div>
+
+    <!-- Query -->
+    <div class="form-row">
+      <label>User Query <span style="color:var(--fail)">*</span></label>
+      <textarea id="input-query" rows="2" placeholder="What is Newton's second law of motion?"></textarea>
+    </div>
+
+    <!-- Retrieved Chunks -->
+    <div class="form-row">
+      <label>Retrieved Chunks <span style="color:var(--fail)">*</span>
+        <span style="color:var(--muted); font-weight:400"> — text your RAG retrieved from the knowledge base</span>
+      </label>
+      <div class="chunks-container" id="chunks-container">
+        <div class="chunk-item">
+          <span class="chunk-label">Chunk 1</span>
+          <textarea rows="3" placeholder="Force equals mass times acceleration. F=ma is the fundamental formula of classical mechanics..."></textarea>
+        </div>
+      </div>
+      <button class="add-chunk-btn" onclick="addChunk()" style="margin-top:8px">
+        + Add another chunk
+      </button>
+    </div>
+
+    <!-- Generated Answer -->
+    <div class="form-row">
+      <label>Generated Answer <span style="color:var(--fail)">*</span></label>
+      <textarea id="input-answer" rows="4" placeholder="Newton's second law states that force equals mass times acceleration (F=ma). This fundamental principle..."></textarea>
+    </div>
+
+    <!-- Metadata (optional) -->
+    <div class="form-grid" style="margin-bottom:20px">
+      <div>
+        <label>Pipeline Name (optional)</label>
+        <input id="meta-pipeline" type="text" placeholder="e.g. Vidya AI, FinBot" />
+      </div>
+      <div>
+        <label>Model Version (optional)</label>
+        <input id="meta-model" type="text" placeholder="e.g. llama-3.3-70b" />
+      </div>
+    </div>
+
+    <!-- Threshold -->
+    <div class="form-row">
+      <label>Groundedness Threshold: <strong id="threshold-val">0.35</strong>
+        <span style="color:var(--muted); font-weight:400"> (0 = lenient, 1 = strict)</span>
+      </label>
+      <input type="range" id="threshold" min="0.1" max="0.8" step="0.05" value="0.35"
+        oninput="document.getElementById('threshold-val').textContent = this.value"
+        style="padding:0; background:transparent; border:none; accent-color:var(--accent)" />
+    </div>
+
+    <!-- Submit -->
+    <button class="audit-btn" id="audit-btn" onclick="runAudit()">
+      <span>🔍</span> Run Governance Audit
+    </button>
+  </div>
+
+  <!-- Loader -->
+  <div class="loader" id="loader">
+    <div class="spinner"></div>
+    <p style="color:var(--muted); font-size:14px">Running governance checks...</p>
+    <div class="loader-steps" id="loader-steps"></div>
+  </div>
+
+  <!-- Results -->
+  <div class="results" id="results">
+
+    <!-- Score Banner -->
+    <div class="score-banner" id="score-banner">
+      <div class="score-left">
+        <h2 id="overall-label"></h2>
+        <p id="overall-sub"></p>
+      </div>
+      <div class="score-circle" id="score-circle">
+        <span class="num" id="score-num"></span>
+        <span class="lbl">Risk Score</span>
+      </div>
+      <div class="score-meta" id="score-meta"></div>
+    </div>
+
+    <!-- Module Cards -->
+    <div class="modules-grid" id="modules-grid"></div>
+
+    <!-- Detail Panel (shown on card click) -->
+    <div class="detail-panel" id="detail-panel">
+      <div class="detail-title">
+        <span id="detail-title-text"></span>
+        <button class="close-btn" onclick="closeDetail()">✕</button>
+      </div>
+      <div id="detail-body"></div>
+    </div>
+
+  </div>
+
+</div><!-- end page-audit -->
+
+<!-- ══════════════ HISTORY PAGE ══════════════ -->
+<div class="page" id="page-history">
+  <div class="history-header">
+    <h2>Audit History</h2>
+    <div style="display:flex; gap:8px">
+      <button class="refresh-btn" onclick="loadHistory()">↻ Refresh</button>
+      <button class="refresh-btn" id="clear-btn"
+        onclick="clearHistory()"
+        style="border-color:var(--fail); color:var(--fail)">
+        🗑 Clear All
+      </button>
+    </div>
+  </div>
+
+  <!-- Confirmation Dialog -->
+  <div id="confirm-overlay" style="
+      display:none; position:fixed; inset:0;
+      background:rgba(0,0,0,0.7); z-index:200;
+      align-items:center; justify-content:center;">
+    <div style="
+        background:var(--surface); border:1px solid var(--border);
+        border-radius:12px; padding:32px; max-width:400px; width:90%;
+        text-align:center">
+      <div style="font-size:32px; margin-bottom:12px">🗑️</div>
+      <h3 style="margin-bottom:8px">Clear All Audit History?</h3>
+      <p style="color:var(--muted); font-size:13px; margin-bottom:24px">
+        This will permanently delete all audit records from the database.
+        In a production system this action would be restricted to admins only.
+      </p>
+      <div style="display:flex; gap:12px; justify-content:center">
+        <button onclick="closeConfirm()" style="
+            padding:10px 24px; background:var(--surface2);
+            border:1px solid var(--border); border-radius:8px;
+            color:var(--text); cursor:pointer; font-size:14px">
+          Cancel
+        </button>
+        <button onclick="confirmClear()" style="
+            padding:10px 24px; background:var(--fail);
+            border:none; border-radius:8px;
+            color:#fff; cursor:pointer; font-size:14px; font-weight:700">
+          Yes, Delete All
+        </button>
+      </div>
+    </div>
+  </div>
+  <div class="card" style="padding:0; overflow:hidden">
+    <div id="history-body">
+      <div class="empty-state">
+        <div class="icon">📋</div>
+        <p>No audit records yet. Run your first audit.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+</main><!-- end main -->
+
+<script>
+// ── Config ──────────────────────────────────────────────────────────────────
+const API = 'http://localhost:8000';
+let lastResult = null;
+
+// ── Navigation ───────────────────────────────────────────────────────────────
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  event.target.classList.add('active');
+}
+
+// ── Chunk Management ─────────────────────────────────────────────────────────
+let chunkCount = 1;
+function addChunk() {
+  chunkCount++;
+  const container = document.getElementById('chunks-container');
+  const div = document.createElement('div');
+  div.className = 'chunk-item';
+  div.innerHTML = `
+    <span class="chunk-label">Chunk ${chunkCount}</span>
+    <textarea rows="3" placeholder="Paste retrieved chunk ${chunkCount} here..."></textarea>
+  `;
+  container.appendChild(div);
+}
+
+// ── Loader Animation ─────────────────────────────────────────────────────────
+const STEPS = [
+  '🔒 Checking for prompt injection...',
+  '🔍 Scanning for PII...',
+  '🧠 Evaluating groundedness...',
+  '⚖️ Flagging bias...',
+  '📋 Writing audit trail...'
+];
+
+function showLoader() {
+  const stepsEl = document.getElementById('loader-steps');
+  stepsEl.innerHTML = '';
+  document.getElementById('loader').classList.add('active');
+  document.getElementById('results').classList.remove('active');
+
+  STEPS.forEach((step, i) => {
+    const el = document.createElement('div');
+    el.className = 'loader-step';
+    el.textContent = step;
+    el.style.animationDelay = `${i * 0.6}s`;
+    stepsEl.appendChild(el);
+  });
+
+  // Mark steps as done progressively
+  STEPS.forEach((_, i) => {
+    setTimeout(() => {
+      const steps = stepsEl.querySelectorAll('.loader-step');
+      if (steps[i]) steps[i].classList.add('done');
+    }, i * 700 + 500);
+  });
+}
+
+function hideLoader() {
+  document.getElementById('loader').classList.remove('active');
+}
+
+// ── Run Audit ─────────────────────────────────────────────────────────────────
+async function runAudit() {
+  const query = document.getElementById('input-query').value.trim();
+  const answer = document.getElementById('input-answer').value.trim();
+  const chunkTextareas = document.querySelectorAll('#chunks-container textarea');
+  const chunks = Array.from(chunkTextareas).map(t => t.value.trim()).filter(Boolean);
+
+  if (!query || !answer || chunks.length === 0) {
+    showToast('⚠️ Please fill in query, at least one chunk, and the generated answer.', 4000);
+    return;
+  }
+
+  const btn = document.getElementById('audit-btn');
+  btn.disabled = true;
+  showLoader();
+
+  const payload = {
+    query,
+    retrieved_chunks: chunks,
+    generated_answer: answer,
+    pipeline_name: document.getElementById('meta-pipeline').value || 'unknown',
+    model_version:  document.getElementById('meta-model').value  || 'unknown',
+    groundedness_threshold: parseFloat(document.getElementById('threshold').value)
+  };
+
+  try {
+    const res = await fetch(`${API}/audit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Server error');
+    }
+
+    const data = await res.json();
+    lastResult = data;
+    renderResults(data);
+    showToast('✅ Audit complete! Scroll down to see results.');
+  } catch (err) {
+    hideLoader();
+    showToast(`❌ Error: ${err.message}. Is the backend running?`, 6000);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ── Render Results ────────────────────────────────────────────────────────────
+function renderResults(data) {
+  hideLoader();
+  document.getElementById('results').classList.add('active');
+
+  const status = data.overall_status;
+  const score  = data.overall_risk_score;
+
+  // Score banner
+  const banner = document.getElementById('score-banner');
+  banner.className = `score-banner ${status}`;
+
+  const labels = { PASS: '✅ Audit Passed', WARN: '⚠️ Audit Warnings', FAIL: '❌ Audit Failed' };
+  const subs   = {
+    PASS: 'No significant governance risks detected in this pipeline output.',
+    WARN: 'Some governance concerns found. Review flagged modules below.',
+    FAIL: 'Critical governance violations detected. Immediate review required.'
+  };
+
+  document.getElementById('overall-label').textContent = labels[status] || status;
+  document.getElementById('overall-label').className = status;
+  document.getElementById('overall-sub').textContent = subs[status] || '';
+
+  const circle = document.getElementById('score-circle');
+  circle.className = `score-circle ${status}`;
+  document.getElementById('score-num').textContent = score;
+
+  // Meta info
+  document.getElementById('score-meta').innerHTML = `
+    <span>🆔 ${data.audit_id.slice(0,8)}...</span>
+    <span>⏱️ ${data.processing_time_ms}ms</span>
+    <span>🔐 ${data.content_hash.slice(0,12)}...</span>
+    <span>🤖 ${data.pipeline_name || 'unknown'}</span>
+  `;
+
+  // Module cards
+  renderModuleCards(data.modules);
+
+  // Scroll to results
+  document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function renderModuleCards(modules) {
+  const grid = document.getElementById('modules-grid');
+  grid.innerHTML = '';
+
+  const defs = [
+    { key: 'prompt_injection', icon: '🔒', label: 'Prompt Injection',   summaryKey: 'summary' },
+    { key: 'pii',              icon: '🔍', label: 'PII Detection',       summaryKey: 'summary' },
+    { key: 'groundedness',     icon: '🧠', label: 'Groundedness',        summaryKey: 'summary' },
+    { key: 'bias',             icon: '⚖️', label: 'Bias Flagging',       summaryKey: 'summary' },
+    { key: 'audit_trail',      icon: '📋', label: 'Audit Trail',         summaryKey: 'summary' },
+  ];
+
+  defs.forEach(def => {
+    const m = modules[def.key];
+    if (!m) return;
+    const status = m.status || 'UNKNOWN';
+    const card = document.createElement('div');
+    card.className = `module-card ${status}`;
+    card.onclick = () => showDetail(def.key, def.label, m);
+
+    card.innerHTML = `
+      <div class="module-header">
+        <div class="module-name">${def.icon} ${def.label}</div>
+        <span class="badge ${status}">${status}</span>
+      </div>
+      <div class="module-summary">${m[def.summaryKey] || '—'}</div>
+      <div class="module-expand">Click for details →</div>
+    `;
+    grid.appendChild(card);
+  });
+}
+
+// ── Detail Panel ──────────────────────────────────────────────────────────────
+function showDetail(key, label, data) {
+  document.getElementById('detail-title-text').textContent = label + ' — Detailed Report';
+  document.getElementById('detail-body').innerHTML = renderDetailBody(key, data);
+  document.getElementById('detail-panel').classList.add('active');
+  document.getElementById('detail-panel').scrollIntoView({ behavior: 'smooth' });
+}
+
+function closeDetail() {
+  document.getElementById('detail-panel').classList.remove('active');
+}
+
+function renderDetailBody(key, data) {
+  let html = '';
+
+  // Frameworks
+  if (data.framework_mappings) {
+    html += `<div class="frameworks">`;
+    data.framework_mappings.forEach(fw => {
+      html += `<span class="fw-tag">${fw}</span>`;
+    });
+    html += `</div><br>`;
+  }
+
+  // Recommendation
+  if (data.recommendation) {
+    html += `<div style="padding:12px 16px; background:var(--surface2); border-radius:8px; font-size:13px; color:var(--muted); margin-bottom:16px">
+      💡 <strong style="color:var(--text)">Recommendation:</strong> ${data.recommendation}
+    </div>`;
+  }
+
+  // PII details
+  if (key === 'pii') {
+    html += renderPiiDetail(data);
+  }
+
+  // Groundedness details
+  if (key === 'groundedness') {
+    html += renderGroundednessDetail(data);
+  }
+
+  // Injection details
+  if (key === 'prompt_injection') {
+    html += renderInjectionDetail(data);
+  }
+
+  // Bias details
+  if (key === 'bias') {
+    html += renderBiasDetail(data);
+  }
+
+  // Audit trail details
+  if (key === 'audit_trail') {
+    html += `
+      <div class="finding-row">
+        <div class="finding-left"><div class="finding-name">Audit ID</div></div>
+        <code style="font-size:12px;color:var(--accent)">${data.audit_id || '—'}</code>
+      </div>
+      <div class="finding-row">
+        <div class="finding-left"><div class="finding-name">SHA-256 Content Hash</div></div>
+        <code style="font-size:11px;color:var(--muted)">${(data.content_hash||'').slice(0,32)}...</code>
+      </div>
+      <div class="finding-row">
+        <div class="finding-left"><div class="finding-name">Timestamp (UTC)</div></div>
+        <span style="font-size:12px">${data.timestamp_utc || '—'}</span>
+      </div>
+    `;
+  }
+
+  if (data.known_limitation) {
+    html += `<p style="margin-top:16px;font-size:12px;color:var(--muted)">
+      ⚠️ <em>${data.known_limitation}</em></p>`;
+  }
+
+  return html;
+}
+
+function renderPiiDetail(data) {
+  const allFindings = [
+    ...( data.details?.query_findings || []),
+    ...( data.details?.answer_findings || [])
+  ];
+  if (!allFindings.length && !(data.details?.chunk_findings||[]).length) {
+    return `<p style="color:var(--pass);font-size:14px">✅ No PII detected.</p>`;
+  }
+  let html = '';
+  allFindings.forEach(f => {
+    html += `<div class="finding-row">
+      <div class="finding-left">
+        <div class="finding-name">${f.pii_type}</div>
+        <div class="finding-desc">${f.description}</div>
+      </div>
+      <div style="text-align:right">
+        <span class="badge ${f.severity}">${f.severity}</span>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">masked: ${f.masked_sample}</div>
+      </div>
+    </div>`;
+  });
+  (data.details?.chunk_findings || []).forEach(cf => {
+    cf.findings.forEach(f => {
+      html += `<div class="finding-row">
+        <div class="finding-left">
+          <div class="finding-name">${f.pii_type} (Chunk ${cf.chunk_index + 1})</div>
+          <div class="finding-desc">${f.description}</div>
+        </div>
+        <span class="badge ${f.severity}">${f.severity}</span>
+      </div>`;
+    });
+  });
+  return html;
+}
+
+function renderGroundednessDetail(data) {
+  if (!data.sentence_results) return '<p style="color:var(--muted)">No sentence data.</p>';
+  let html = `<div style="margin-bottom:16px; font-size:13px; color:var(--muted)">
+    Grounded: <strong style="color:var(--pass)">${data.grounded_sentences}</strong> /
+    ${data.total_sentences} sentences.
+    Overall score: <strong style="color:var(--text)">${data.score_percent}</strong>
+    (threshold: ${data.threshold})
+  </div>`;
+  data.sentence_results.forEach(s => {
+    const cls = s.verdict === 'GROUNDED' ? 'grounded' : 'hallucinated';
+    const pct = Math.round(s.groundedness_score * 100);
+    html += `<div class="sentence-row ${cls}">
+      <div class="sentence-text">"${s.sentence}"</div>
+      <div class="sentence-meta">
+        <span class="badge ${s.verdict === 'GROUNDED' ? 'PASS' : 'FAIL'}">${s.verdict}</span>
+        <div class="score-bar-wrap">
+          <div class="score-bar ${cls}" style="width:${pct}%"></div>
+        </div>
+        <span class="score-val">${pct}%</span>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">${s.explanation}</div>
+    </div>`;
+  });
+  return html;
+}
+
+function renderInjectionDetail(data) {
+  if (!data.injection_detected) return `<p style="color:var(--pass);font-size:14px">✅ No injection patterns detected.</p>`;
+  let html = '';
+  (data.query_findings || []).forEach(f => {
+    html += `<div class="finding-row">
+      <div class="finding-left">
+        <div class="finding-name">${f.name}</div>
+        <div class="finding-desc">${f.explanation}</div>
+        <div class="finding-desc" style="margin-top:4px; font-family:monospace; color:var(--fail)">
+          Matched: "${f.matched_text}"
+        </div>
+      </div>
+      <span class="badge ${f.severity}">${f.severity}</span>
+    </div>`;
+  });
+  return html || '<p style="color:var(--muted)">Injection in retrieved chunks. Check chunk findings.</p>';
+}
+
+function renderBiasDetail(data) {
+  const allFlags = [...(data.retrieval_bias_flags||[]), ...(data.output_bias_flags||[])];
+  if (!allFlags.length) return `<p style="color:var(--pass);font-size:14px">✅ No bias indicators detected.</p>`;
+  let html = '';
+  allFlags.forEach(f => {
+    html += `<div class="finding-row">
+      <div class="finding-left">
+        <div class="finding-name">${f.bias_type}</div>
+        <div class="finding-desc">${f.detail}</div>
+        <div class="finding-desc" style="margin-top:3px">${f.framework_ref}</div>
+      </div>
+      <span class="badge ${f.severity}">${f.severity}</span>
+    </div>`;
+  });
+  return html;
+}
+
+// ── Clear History ─────────────────────────────────────────────────────────────
+function clearHistory() {
+  // Show confirmation dialog before doing anything destructive
+  // UX PRINCIPLE: Always confirm before irreversible actions
+  document.getElementById('confirm-overlay').style.display = 'flex';
+}
+
+function closeConfirm() {
+  document.getElementById('confirm-overlay').style.display = 'none';
+}
+
+async function confirmClear() {
+  closeConfirm();
+  const btn = document.getElementById('clear-btn');
+  btn.disabled = true;
+  btn.textContent = 'Clearing...';
+
+  try {
+    const res = await fetch(`${API}/history`, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.success) {
+      showToast(`✅ ${data.message}`);
+      loadHistory();
+    } else {
+      showToast(`❌ ${data.message}`, 5000);
+    }
+  } catch (err) {
+    showToast(`❌ Error: ${err.message}`, 5000);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🗑 Clear All';
+  }
+}
+
+async function deleteRecord(auditId) {
+  // Inline confirmation — simpler than a full modal for single record
+  if (!confirm(`Delete audit record ${auditId.slice(0,8)}...?\nThis cannot be undone.`)) return;
+
+  try {
+    const res = await fetch(`${API}/audit/${auditId}`, { method: 'DELETE' });
+    const data = await res.json();
+
+    if (data.success) {
+      // Remove row from DOM instantly — no need to reload entire table
+      // This is called 'optimistic UI update' — feels faster to the user
+      const row = document.getElementById(`row-${auditId}`);
+      if (row) {
+        row.style.transition = 'opacity 0.3s, transform 0.3s';
+        row.style.opacity = '0';
+        row.style.transform = 'translateX(20px)';
+        setTimeout(() => row.remove(), 300);
+      }
+      showToast(`✅ ${data.message}`);
+    } else {
+      showToast(`❌ ${data.message}`, 5000);
+    }
+  } catch (err) {
+    showToast(`❌ Error: ${err.message}`, 5000);
+  }
+}
+
+// ── History ───────────────────────────────────────────────────────────────────
+async function loadHistory() {
+  const body = document.getElementById('history-body');
+  body.innerHTML = '<div style="padding:24px;color:var(--muted);text-align:center">Loading...</div>';
+
+  try {
+    const res = await fetch(`${API}/history`);
+    const data = await res.json();
+    const records = data.records || [];
+
+    if (!records.length) {
+      body.innerHTML = `<div class="empty-state"><div class="icon">📋</div><p>No audit records yet.</p></div>`;
+      return;
+    }
+
+    const riskClass = s => s === 'PASS' ? 'low' : s === 'WARN' ? 'med' : 'high';
+
+    body.innerHTML = `
+      <table>
+        <thead>
+          <tr>
+            <th>Timestamp</th>
+            <th>Query</th>
+            <th>Pipeline</th>
+            <th>Risk Score</th>
+            <th>Status</th>
+            <th>PII</th>
+            <th>Groundedness</th>
+            <th>Bias</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${records.map(r => `
+            <tr id="row-${r.audit_id}">
+              <td style="font-size:11px;color:var(--muted)">${r.timestamp_utc?.slice(0,19).replace('T',' ')}</td>
+              <td class="td-query" title="${r.query}">${r.query}</td>
+              <td style="font-size:12px;color:var(--muted)">${r.pipeline_name||'—'}</td>
+              <td><span class="risk-pill ${riskClass(r.overall_status)}">${r.overall_risk_score}/100</span></td>
+              <td><span class="badge ${r.overall_status}">${r.overall_status}</span></td>
+              <td><span class="badge ${r.pii_status||'UNKNOWN'}">${r.pii_status||'—'}</span></td>
+              <td><span class="badge ${r.groundedness_status||'UNKNOWN'}">${r.groundedness_status||'—'}</span></td>
+              <td><span class="badge ${r.bias_status||'UNKNOWN'}">${r.bias_status||'—'}</span></td>
+              <td>
+                <button
+                  onclick="deleteRecord('${r.audit_id}')"
+                  title="Delete this record"
+                  style="
+                    background:transparent; border:1px solid transparent;
+                    color:var(--muted); cursor:pointer; border-radius:6px;
+                    padding:4px 8px; font-size:14px; transition:all .2s;
+                  "
+                  onmouseover="this.style.borderColor='var(--fail)';this.style.color='var(--fail)'"
+                  onmouseout="this.style.borderColor='transparent';this.style.color='var(--muted)'"
+                >🗑</button>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+  } catch (err) {
+    body.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>Could not load history. Is the backend running?</p></div>`;
+  }
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function showToast(msg, dur = 3000) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), dur);
+}
+
+// ── Demo Data ─────────────────────────────────────────────────────────────────
+// Pre-fill a demo so user can click Audit immediately
+window.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('input-query').value =
+    "What is Newton's second law of motion?";
+
+  document.querySelector('#chunks-container textarea').value =
+    "Newton's second law of motion states that the force acting on an object is equal to the mass of the object multiplied by its acceleration. Mathematically expressed as F = ma, where F is force in Newtons, m is mass in kilograms, and a is acceleration in metres per second squared. This law was published in Principia Mathematica in 1687.";
+
+  document.getElementById('input-answer').value =
+    "Newton's second law states that force equals mass times acceleration (F=ma). This law was first discovered by Einstein in 1905 and is used by NASA for rocket propulsion calculations. The formula is fundamental to all of classical mechanics.";
+
+  document.getElementById('meta-pipeline').value = 'Demo Pipeline';
+  document.getElementById('meta-model').value = 'llama-3.3-70b';
+});
+</script>
+</body>
+</html>

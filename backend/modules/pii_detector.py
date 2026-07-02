@@ -1,33 +1,6 @@
-"""
-Module 1: PII Detector
-======================
-Scans retrieved chunks AND the generated answer for Personally Identifiable
-Information (PII). Uses regex patterns tuned for Indian data (Aadhaar, PAN,
-phone numbers) plus universal patterns (email, credit card).
-
-WHY THIS MATTERS (Interview talking point):
-- India's DPDP Act 2023 requires that personal data is not exposed without
-  consent. In a RAG system, the knowledge base may accidentally contain user
-  data. This module enforces data minimisation at retrieval time.
-- This is equivalent to what enterprise DLP (Data Loss Prevention) tools do,
-  but purpose-built for LLM pipelines.
-
-DESIGN DECISION — Why regex over spaCy NER?
-- Regex is deterministic (same input always same output) — critical for audit
-  purposes. NER models can be probabilistic and harder to explain in court.
-- For structured PII (phone, email, Aadhaar) regex is more precise than NER.
-- Regex rules are transparent and auditable — a regulator can read them.
-- spaCy NER is better for unstructured PII like person names — we flag that
-  as a limitation and suggest adding NER in production.
-"""
-
 import re
 from typing import List, Dict, Any
 
-
-# ── PII pattern definitions ──────────────────────────────────────────────────
-# Each pattern has: name, regex, severity (HIGH/MEDIUM/LOW), description
-# Severity follows standard data classification used in ISO 27001
 
 PII_PATTERNS = [
     {
@@ -114,8 +87,6 @@ def scan_text(text: str) -> List[Dict[str, Any]]:
                 "pii_type": pii["name"],
                 "severity": pii["severity"],
                 "count": len(matches),
-                # Mask actual value — show only first 3 chars + asterisks
-                # This is the standard PII masking format used in banking logs
                 "masked_sample": _mask(matches[0]),
                 "framework_ref": pii["framework_ref"],
                 "description": pii["description"]
@@ -162,7 +133,6 @@ def run_pii_check(
                 "findings": findings
             })
 
-    # Determine overall PII risk level
     all_findings = query_findings + answer_findings
     for cf in chunk_findings:
         all_findings += cf["findings"]

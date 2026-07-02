@@ -1,30 +1,3 @@
-"""
-Responsible RAG Auditor — FastAPI Backend
-==========================================
-The main application entry point. Wires all 5 audit modules together
-and exposes them as a clean REST API.
-
-ARCHITECTURE PATTERN — "Middleware Auditor":
-  This server does NOT replace your RAG pipeline.
-  It sits ALONGSIDE it. You send it the inputs/outputs of your pipeline
-  and it tells you what governance risks were found.
-  This is called the "sidecar pattern" in microservices architecture —
-  a separate service that monitors another service without modifying it.
-
-API ENDPOINTS:
-  POST /audit          — Main audit endpoint (runs all 5 modules)
-  GET  /history        — Get audit log history
-  GET  /audit/{id}     — Get specific audit record
-  GET  /health         — Health check
-  GET  /               — Serve the HTML frontend
-
-CORS (Cross-Origin Resource Sharing):
-  Since our HTML frontend is served from a different origin than the API,
-  we enable CORS. This is a browser security mechanism. Without it,
-  the browser would block our frontend from calling our API.
-  In production: restrict CORS to specific allowed origins.
-"""
-
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -34,7 +7,7 @@ from typing import List, Optional
 import time
 from pathlib import Path
 
-# Import our 5 audit modules
+# 5 audit modules
 from modules.pii_detector import run_pii_check
 from modules.groundedness_checker import run_groundedness_check
 from modules.bias_flagger import run_bias_check
@@ -52,13 +25,11 @@ app = FastAPI(
         "Maps to: NIST AI RMF, RBI FREE-AI, EU AI Act, DPDP Act 2023."
     ),
     version="1.0.0",
-    docs_url="/docs",      # Swagger UI — auto-generated API documentation
-    redoc_url="/redoc"     # ReDoc — alternative API documentation view
+    docs_url="/docs",      
+    redoc_url="/redoc"     
 )
 
 # ── CORS Middleware ──────────────────────────────────────────────────────────
-# Allow the HTML frontend (any origin in dev) to call this API.
-# In production: replace "*" with your actual frontend URL.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -68,7 +39,6 @@ app.add_middleware(
 )
 
 # ── Static File Serving ──────────────────────────────────────────────────────
-# Serve the HTML frontend from the /frontend directory
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 
 
@@ -81,10 +51,6 @@ async def startup_event():
     print("📊 Swagger docs available at: http://localhost:8000/docs")
 
 
-# ── Request / Response Models (Pydantic) ─────────────────────────────────────
-# Pydantic models define the exact shape of data we accept and return.
-# This is input validation — a core software engineering best practice.
-# If the request doesn't match this shape, FastAPI auto-returns a 422 error.
 
 class AuditRequest(BaseModel):
     """
@@ -150,16 +116,6 @@ class AuditResponse(BaseModel):
 async def run_audit(request: AuditRequest):
     """
     Main endpoint — runs all 5 audit modules and returns a complete report.
-
-    EXECUTION ORDER matters:
-    1. Prompt injection FIRST — if query is malicious, flag immediately
-    2. PII check — scan for data privacy issues
-    3. Groundedness — evaluate answer quality
-    4. Bias check — evaluate fairness
-    5. Audit logging LAST — log everything including all module results
-
-    This ordering is itself a governance design decision:
-    catching injection early means we don't waste compute on a malicious query.
     """
     start_time = time.time()
 
@@ -256,17 +212,6 @@ async def delete_history():
     """
     Delete all audit records.
     Uses HTTP DELETE method — the correct REST verb for deletion.
-
-    REST API DESIGN NOTE (Interview talking point):
-    HTTP methods have specific meanings:
-    GET    = read data        (safe, no side effects)
-    POST   = create data      (used for /audit)
-    DELETE = delete data      (used here)
-    PUT    = replace data
-    PATCH  = partially update
-
-    Using the correct HTTP verb is called 'RESTful design'.
-    A common mistake is using POST for everything — wrong practice.
     """
     result = clear_audit_history()
     if not result["success"]:
@@ -290,11 +235,6 @@ async def delete_audit_record(audit_id: str):
     """
     Delete a single audit record by ID.
     Uses HTTP DELETE with a path parameter — standard RESTful design.
-
-    PATH PARAMETER vs QUERY PARAMETER (Interview note):
-    /audit/{audit_id}  → path parameter  → identifies a specific resource
-    /audit?id=xxx      → query parameter → used for filtering/searching
-    REST convention: use path params to identify resources, query params to filter.
     """
     result = delete_audit_by_id(audit_id)
     if not result["success"]:
@@ -343,5 +283,5 @@ if __name__ == "__main__":
         "main:app",
         host="0.0.0.0",
         port=8000,
-        reload=True  # Auto-restart on code changes (dev mode only)
+        reload=True  
     )

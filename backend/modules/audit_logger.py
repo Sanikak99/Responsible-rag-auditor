@@ -1,49 +1,3 @@
-"""
-Module 4: Audit Trail / Audit Logger
-=====================================
-Creates and maintains an immutable, queryable log of every audit event.
-Every time the auditor runs, a complete record is stored in SQLite.
-
-WHY AUDIT TRAILS MATTER (Interview core concept):
-  In regulated industries (banking, healthcare, finance), every AI decision
-  must be traceable. If a loan is denied by an AI or a student gets wrong
-  information from an AI tutor, regulators can ask:
-  - What was the exact query?
-  - What documents did the system retrieve?
-  - What did the model say?
-  - Were any risks flagged at the time?
-  - Who or what was responsible?
-
-  Without an audit trail, you CANNOT answer these questions.
-  This is called "AI accountability" — one of the 6 pillars of responsible AI.
-
-IMMUTABILITY (Critical concept):
-  We INSERT records but NEVER UPDATE or DELETE them.
-  This is the "append-only" pattern. Even if an audit has an error,
-  we add a CORRECTION record, not modify the original.
-  Why? Because if records can be modified, they can be falsified.
-  A trustworthy audit trail is one where the past cannot be changed.
-
-  In production: use a WORM (Write Once Read Many) storage system,
-  or a blockchain-based ledger for tamper-evident audit trails.
-  AWS QLDB (Quantum Ledger Database) is designed exactly for this.
-
-DATABASE CHOICE — Why SQLite?
-  - Zero infrastructure: no server needed, just a file
-  - Perfect for development and demos
-  - ACID compliant (Atomicity, Consistency, Isolation, Durability) —
-    guarantees that each write either fully completes or fully fails
-  - In production: replace with PostgreSQL + append-only table policy,
-    or a dedicated audit log service
-
-FRAMEWORK MAPPINGS:
-  - NIST AI RMF — GOVERN 1.7: Processes for audit and accountability
-  - RBI FREE-AI — Accountability & Transparency pillars
-  - EU AI Act Article 12 — Record-keeping for high-risk AI systems
-  - DPDP Act 2023 — Data fiduciaries must maintain processing records
-  - ISO 27001 — A.12.4: Logging and monitoring
-"""
-
 import sqlite3
 import json
 import uuid
@@ -52,8 +6,7 @@ from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 from pathlib import Path
 
-# Database file location
-# In production this path would come from environment config
+
 DB_PATH = Path(__file__).parent.parent / "audit_log.db"
 
 
@@ -61,12 +14,11 @@ def _get_connection() -> sqlite3.Connection:
     """
     Get a database connection with WAL mode enabled.
     WAL = Write-Ahead Logging: allows concurrent reads during writes.
-    This is important for audit logs which may be read while being written.
     """
     conn = sqlite3.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row  # Returns rows as dict-like objects
-    conn.execute("PRAGMA journal_mode=WAL")  # Enable WAL mode
-    conn.execute("PRAGMA foreign_keys=ON")   # Enforce referential integrity
+    conn.row_factory = sqlite3.Row  
+    conn.execute("PRAGMA journal_mode=WAL")  
+    conn.execute("PRAGMA foreign_keys=ON")   
     return conn
 
 
@@ -74,14 +26,6 @@ def initialise_db() -> None:
     """
     Create the audit tables if they don't exist.
     Called once when the FastAPI server starts.
-    
-    TABLE DESIGN DECISIONS:
-    - audit_id: UUID (universally unique — can merge logs from multiple systems)
-    - timestamp_utc: Always UTC (never local time — avoids timezone ambiguity)
-    - content_hash: SHA-256 of the full audit record — tamper detection
-      If someone modifies a row, the hash won't match anymore.
-    - raw_results: Full JSON stored as text — preserves complete context
-    - risk_score: Computed 0-100 score for quick filtering/querying
     """
     conn = _get_connection()
     conn.execute("""
@@ -115,14 +59,6 @@ def initialise_db() -> None:
 def _compute_hash(data: Dict) -> str:
     """
     Compute SHA-256 hash of the audit record for tamper detection.
-
-    INTERVIEW EXPLANATION of SHA-256:
-    SHA-256 is a cryptographic hash function that converts any input
-    into a fixed 64-character string. Two different inputs NEVER produce
-    the same hash (collision resistance). If even one character of the
-    audit record changes, the hash changes completely. So by storing the
-    hash alongside the record, we can later verify the record hasn't
-    been tampered with. This is the same mechanism used in blockchain.
     """
     serialised = json.dumps(data, sort_keys=True, default=str)
     return hashlib.sha256(serialised.encode()).hexdigest()
@@ -140,34 +76,32 @@ def _compute_overall_risk_score(results: Dict[str, Any]) -> int:
     - Bias detected: HIGH: +20, MEDIUM: +10, LOW: +5
     - Prompt injection: detected: +25
 
-    This weighted scoring is a simplified version of how risk scoring
-    works in enterprise AI governance platforms like IBM OpenScale.
     """
     score = 0
 
-    # PII penalty
+    
     pii = results.get("pii", {})
     pii_severity_map = {"CRITICAL": 30, "HIGH": 20, "MEDIUM": 10, "LOW": 5, "NONE": 0}
     score += pii_severity_map.get(pii.get("risk_level", "NONE"), 0)
 
-    # Groundedness penalty
+    
     ground = results.get("groundedness", {})
     hallucinated = ground.get("hallucinated_sentences", 0)
     total = ground.get("total_sentences", 1)
     if total > 0:
         score += int((hallucinated / total) * 25)
 
-    # Bias penalty
+    
     bias = results.get("bias", {})
     bias_severity_map = {"HIGH": 20, "MEDIUM": 10, "LOW": 5, "NONE": 0}
     score += bias_severity_map.get(bias.get("risk_level", "NONE"), 0)
 
-    # Injection penalty
+   
     injection = results.get("prompt_injection", {})
     inj_severity_map = {"HIGH": 25, "MEDIUM": 15, "LOW": 5, "NONE": 0}
     score += inj_severity_map.get(injection.get("risk_level", "NONE"), 0)
 
-    return min(score, 100)  # Cap at 100
+    return min(score, 100)  
 
 
 def _determine_overall_status(risk_score: int) -> str:
@@ -209,7 +143,7 @@ def log_audit(
     overall_risk_score = _compute_overall_risk_score(module_results)
     overall_status = _determine_overall_status(overall_risk_score)
 
-    # Build the full record for hashing (before DB insert)
+    
     record_data = {
         "audit_id": audit_id,
         "timestamp_utc": timestamp,
@@ -324,23 +258,7 @@ def get_audit_by_id(audit_id: str) -> Optional[Dict]:
 
 
 def clear_audit_history() -> Dict:
-    """
-    Delete all audit records from the database.
-
-    DESIGN NOTE — Why allow deletion at all?
-    In a real regulated system (RBI, banking) audit logs are IMMUTABLE
-    and deletion would be prohibited. Logs must be retained for a defined
-    period (RBI mandates 5 years for financial records).
-
-    In our tool we allow it for demo/development purposes only.
-    In production this endpoint would be:
-    - Restricted to admin roles only (RBAC — Role Based Access Control)
-    - Replaced with an 'archive' action, not a hard delete
-    - Logged itself as a meta-audit event ("who deleted the logs and when")
-
-    This is a great interview talking point — shows you understand the
-    difference between dev convenience and production governance requirements.
-    """
+    """Delete all audit records from the database."""
     try:
         conn = _get_connection()
         result = conn.execute("DELETE FROM audit_log")
@@ -361,29 +279,9 @@ def clear_audit_history() -> Dict:
 
 
 def delete_audit_by_id(audit_id: str) -> Dict:
-    """
-    Delete a single audit record by its UUID.
-
-    DESIGN NOTE (Interview talking point):
-    Deleting individual records is called 'selective deletion' or
-    'targeted purge'. In real governance systems this is even more
-    restricted than bulk deletion because:
-    - Individual record deletion can be used to hide specific decisions
-    - Regulators may require ALL records for a time period, not just some
-    - Selective deletion breaks the chain of evidence
-
-    In production this would require:
-    - Admin role (RBAC)
-    - A written justification logged separately
-    - Approval from a second person (4-eyes principle)
-    - The deletion event itself logged in a separate tamper-proof log
-
-    For our demo tool we allow it freely — but knowing these constraints
-    shows governance maturity in interviews.
-    """
+    """ Delete a single audit record by its UUID."""
     try:
         conn = _get_connection()
-        # First check if record exists
         row = conn.execute(
             "SELECT audit_id FROM audit_log WHERE audit_id = ?", (audit_id,)
         ).fetchone()

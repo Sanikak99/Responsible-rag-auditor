@@ -1,52 +1,7 @@
-"""
-Module 3: Bias Flagger
-======================
-Detects potential bias in retrieved chunks and generated answers using two
-complementary approaches:
-
-APPROACH 1 — Demographic Term Frequency Analysis:
-  Scans text for demographic terms (gender, religion, caste, region) and
-  checks for skewed representation. Unequal mention patterns can indicate
-  retrieval bias — the system surfaces documents that over-represent certain
-  groups.
-
-APPROACH 2 — Counterfactual Fairness Check:
-  Compares the current answer against a stored set of "probe pairs" —
-  the same question asked with different demographic framing. If answers
-  differ significantly, that signals bias.
-
-TYPES OF BIAS WE DETECT (Interview definitions):
-  1. Representation Bias — certain groups mentioned more than others
-  2. Lexical Bias — language used is positive for one group, negative for another
-  3. Retrieval Bias — knowledge base surfaces docs skewed toward certain demographics
-  4. Confirmation Bias — system retrieves content that matches the query's assumed viewpoint
-
-WHY BIAS MATTERS FOR RBI/FinTech:
-  AI systems used in credit scoring, loan approvals, or financial advice MUST
-  be fair across gender, religion, caste, and region under:
-  - RBI FREE-AI Fairness pillar
-  - Equal Credit Opportunity norms
-  - EU AI Act Article 10 — non-discrimination for high-risk AI
-  - NIST AI RMF — GOVERN 6.1: Bias is monitored and mitigated
-
-LIMITATION (Be honest in interviews):
-  This is a lightweight heuristic-based detector. Production bias detection
-  uses statistical fairness metrics like:
-  - Demographic Parity
-  - Equalized Odds
-  - Individual Fairness
-  Tools like IBM AI Fairness 360, Aequitas, or Fairlearn implement these.
-  Our tool flags potential issues; a full bias audit would use those tools.
-"""
-
 import re
 from typing import List, Dict, Any
 from collections import Counter
 
-
-# ── Demographic Term Dictionary ──────────────────────────────────────────────
-# Organised by category. Balanced — includes all sides of each dimension.
-# This is NOT a blacklist — presence is not bad. IMBALANCE is the flag.
 
 DEMOGRAPHIC_TERMS = {
     "gender": {
@@ -73,8 +28,6 @@ DEMOGRAPHIC_TERMS = {
 }
 
 # ── Loaded/Charged Word Lists ────────────────────────────────────────────────
-# Words that carry strong positive or negative connotations.
-# Bias detector checks if these co-occur with demographic terms.
 
 POSITIVE_LOADED = ["capable", "intelligent", "hardworking", "trustworthy",
                    "successful", "skilled", "reliable", "honest", "efficient"]
@@ -87,7 +40,6 @@ def _count_demographic_terms(text: str) -> Dict[str, Dict[str, int]]:
     """
     Count occurrences of demographic terms per category.
     Uses word-boundary matching to avoid partial matches
-    (e.g., 'his' shouldn't match inside 'this').
     """
     text_lower = text.lower()
     counts = {}
@@ -113,11 +65,6 @@ def _check_gender_imbalance(counts: Dict) -> List[Dict]:
     """
     Check if masculine and feminine terms are used in very unequal proportions.
     A skew ratio > 3:1 is flagged as potential gender bias.
-    
-    INTERVIEW NOTE: In NLP research, gender bias in language models is well
-    documented. Word embeddings like Word2Vec learned associations like
-    "doctor → man" and "nurse → woman" from biased training corpora.
-    This is the 'word embedding bias' problem (Bolukbasi et al., 2016).
     """
     flags = []
     gender = counts.get("gender", {})
@@ -128,7 +75,6 @@ def _check_gender_imbalance(counts: Dict) -> List[Dict]:
     if total == 0:
         return flags
 
-    # Check for significant skew (more than 75% one gender)
     if total > 0 and masc > 0 and fem > 0:
         ratio = max(masc, fem) / min(masc, fem)
         dominant = "masculine" if masc > fem else "feminine"
@@ -176,7 +122,7 @@ def _check_socioeconomic_bias(counts: Dict, text: str) -> List[Dict]:
     affluent_count = socio.get("affluent", 0)
     underprivileged_count = socio.get("underprivileged", 0)
 
-    # Check co-occurrence of negative words near underprivileged terms
+   
     for term in DEMOGRAPHIC_TERMS["socioeconomic"]["underprivileged"]:
         if term.lower() in text_lower:
             for neg_word in NEGATIVE_LOADED:
@@ -187,7 +133,7 @@ def _check_socioeconomic_bias(counts: Dict, text: str) -> List[Dict]:
                         "detail": f"Negative term '{neg_word}' appears in text with underprivileged group reference '{term}'. Potential harmful association.",
                         "framework_ref": "RBI FREE-AI — Fairness; Equal Credit Opportunity"
                     })
-                    break  # One flag per demographic term is enough
+                    break 
 
     return flags
 
@@ -228,14 +174,14 @@ def run_bias_check(
     """
     combined_chunks = " ".join(retrieved_chunks)
 
-    # Analyse chunks (retrieval-level bias)
+   
     chunk_counts = _count_demographic_terms(combined_chunks)
     chunk_flags = []
     chunk_flags += _check_gender_imbalance(chunk_counts)
     chunk_flags += _check_socioeconomic_bias(chunk_counts, combined_chunks)
     chunk_flags += _check_religious_balance(chunk_counts)
 
-    # Analyse generated answer (output-level bias)
+    
     answer_counts = _count_demographic_terms(generated_answer)
     answer_flags = []
     answer_flags += _check_gender_imbalance(answer_counts)
